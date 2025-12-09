@@ -1,0 +1,94 @@
+{
+  "version": "1.0.0",
+  "description": "Real Estate Expert System Rule Configuration",
+  "location_base_rates": {
+    "premium": 5000,
+    "urban_center": 4000,
+    "suburban": 3000,
+    "rural": 2000,
+    "general": 3000
+  },
+  "property_type_factors": {
+    "house": 1.05,
+    "flat": 1.0,
+    "plot": 0.6,
+    "commercial": 1.25
+  },
+  "condition_factors": {
+    "new": 1.15,
+    "like_new": 1.05,
+    "used_good": 1.0,
+    "needs_renovation": 0.8
+  },
+  "parking_factors": {
+    "none": 1.0,
+    "street": 0.98,
+    "covered": 1.03,
+    "garage": 1.06
+  },
+  "floor_adjustments": {
+    "ground_commercial_bonus": 0.05,
+    "per_floor_bonus": 0.01,
+    "max_floor_bonus": 0.10
+  },
+  "age_depreciation": {
+    "rate_per_year": 0.005,
+    "min_factor": 0.6
+  },
+  "amenities": {
+    "base_score": 3,
+    "per_point_adjustment": 0.03
+  },
+  "demand": {
+    "base_score": 3,
+    "per_point_adjustment": 0.04
+  },
+  "crime": {
+    "weight": 0.6
+  },
+  "volatility": {
+    "threshold": 0.2,
+    "max_penalty": 0.12,
+    "weight": 0.4
+  },
+  "development": {
+    "uplift_weight": 0.06
+  },
+  "price_clamp": {
+    "max_multiplier": 1.7,
+    "min_multiplier": 0.4
+  },
+  "rent_yields": {
+    "high_demand": 0.08,
+    "medium_demand": 0.05,
+    "low_demand": 0.03
+  },
+  "scoring_weights": {
+    "location": 0.30,
+    "area": 0.20,
+    "property_type": 0.08,
+    "condition": 0.06,
+    "age": 0.04,
+    "bedrooms_bathrooms": 0.07,
+    "amenities": 0.04,
+    "parking": 0.02,
+    "demand_score": 0.06,
+    "market_appreciation": 0.05,
+    "risk_factors": 0.08
+  },
+  "defaults": {
+    "location": "general",
+    "occupancy_rate": 0.9,
+    "condition": "used_good",
+    "age": 10,
+    "floor": 1,
+    "parking": "none",
+    "amenities_score": 3,
+    "demand_score": 3,
+    "market_appreciation_score": 0.03,
+    "crime_index": 0.05,
+    "market_volatility": 0.1,
+    "economic_index": 0.5,
+    "development_index": 0.0
+  }
+}
