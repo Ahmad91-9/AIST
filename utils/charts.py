@@ -8,8 +8,13 @@ def create_price_comparison_chart(expert_price: float, ml_price: float, final_pr
     """Create bar chart comparing expert, ML, and final prices."""
     fig = go.Figure()
     
+    # Handle None values gracefully
+    expert_price = expert_price or 0
+    ml_price = ml_price if ml_price is not None else expert_price
+    final_price = final_price or expert_price
+    
     categories = ['Expert System', 'ML Model', 'Final (Blended)']
-    values = [expert_price, ml_price if ml_price else 0, final_price]
+    values = [expert_price, ml_price, final_price]
     colors = ['#3498db', '#e74c3c', '#27ae60']
     
     fig.add_trace(go.Bar(
@@ -39,6 +44,10 @@ def create_price_comparison_chart(expert_price: float, ml_price: float, final_pr
 
 def create_risk_gauge(risk_score: float) -> go.Figure:
     """Create a gauge chart for risk score (0-1 scale)."""
+    # Handle None values
+    risk_score = risk_score if risk_score is not None else 0.3
+    risk_score = max(0, min(1, risk_score))
+    
     # Convert to percentage
     risk_pct = risk_score * 100
     
@@ -90,6 +99,12 @@ def create_forecast_chart(current_price: float, price_1yr: float, price_3yr: flo
                           volatility: float = 0.1) -> go.Figure:
     """Create line chart with price forecast and uncertainty bands."""
     fig = go.Figure()
+    
+    # Handle None values
+    current_price = current_price or 0
+    price_1yr = price_1yr or current_price
+    price_3yr = price_3yr or current_price
+    volatility = volatility if volatility is not None else 0.1
     
     # Timeline
     years = [0, 1, 3]
@@ -169,15 +184,16 @@ def create_roi_chart(roi: float, ml_roi: float = None) -> go.Figure:
     """Create ROI comparison chart."""
     fig = go.Figure()
     
+    # Handle None values
+    roi = roi if roi is not None else 0
+    
     # Data
-    if ml_roi is not None:
+    if ml_roi is not None and ml_roi > 0:
         categories = ['Expert ROI', 'ML ROI']
         values = [roi, ml_roi]
-        colors = ['#3498db', '#e74c3c']
     else:
         categories = ['Estimated ROI']
         values = [roi]
-        colors = ['#3498db']
     
     # Determine color based on ROI value
     bar_colors = []

@@ -208,16 +208,32 @@ def blend_predictions(expert_value: float, ml_value: Optional[float], ml_confide
     Returns:
         (blended_value, blend_info) tuple
     """
-    if ml_value is None or ml_confidence <= 0:
+    # Handle None or invalid ML values
+    if ml_value is None:
         return expert_value, {
             'method': 'expert_only',
             'expert_weight': 1.0,
             'ml_weight': 0.0,
-            'reason': 'ML prediction unavailable'
+            'ml_confidence': 0.0,
+            'reason': 'ML prediction unavailable',
+            'expert_value': expert_value,
+            'ml_value': None
         }
     
-    # Cap ML confidence at 95% to maintain explainability
-    ml_confidence = min(max(ml_confidence, 0.0), 0.95)
+    # Handle invalid confidence (force lower bound)
+    ml_confidence = max(0.0, min(float(ml_confidence), 0.95))
+    
+    if ml_confidence <= 0.05:
+        # Very low confidence - use expert only
+        return expert_value, {
+            'method': 'expert_only',
+            'expert_weight': 1.0,
+            'ml_weight': 0.0,
+            'ml_confidence': ml_confidence,
+            'reason': 'ML confidence too low',
+            'expert_value': expert_value,
+            'ml_value': ml_value
+        }
     
     w_ml = ml_confidence
     w_expert = 1 - w_ml
@@ -225,11 +241,13 @@ def blend_predictions(expert_value: float, ml_value: Optional[float], ml_confide
     blended = w_ml * ml_value + w_expert * expert_value
     
     # Check for large discrepancy
-    if abs(ml_value - expert_value) / max(expert_value, 1) > 0.3 and ml_confidence < 0.6:
+    if expert_value > 0 and abs(ml_value - expert_value) / expert_value > 0.3 and ml_confidence < 0.6:
         # Large difference with low confidence - prefer expert
         blended = expert_value
         method = 'expert_preferred'
         reason = 'Large ML-expert discrepancy with low ML confidence'
+        w_ml = 0.0
+        w_expert = 1.0
     else:
         method = 'confidence_weighted'
         reason = f'Blended with {w_ml*100:.0f}% ML weight'

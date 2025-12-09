@@ -104,10 +104,16 @@ class RuleEngine:
         floor_config = self.rules.get('floor_adjustments', {})
         if property_type == 'commercial' and floor == 0:
             floor_factor = 1 + floor_config.get('ground_commercial_bonus', 0.05)
+        elif floor < 0:
+            # Underground/basement floors get slight penalty
+            floor_factor = max(0.92, 1 + floor * 0.02)
         else:
             per_floor = floor_config.get('per_floor_bonus', 0.01)
             max_bonus = floor_config.get('max_floor_bonus', 0.10)
-            floor_factor = 1 + min(floor * per_floor, max_bonus)
+            floor_factor = 1 + min(max(0, floor) * per_floor, max_bonus)
+        
+        # Ensure floor factor is always positive and reasonable
+        floor_factor = max(0.85, min(floor_factor, 1.15))
         
         old_price = current_price
         current_price *= floor_factor
@@ -124,24 +130,30 @@ class RuleEngine:
         trace.add_step('parking', parking_factor, old_price, current_price,
                       f"Parking type: {parking}")
         
-        # Amenities adjustment
+        # Amenities adjustment (symmetric around 1.0)
         amenities_score = features.get('amenities_score', 3)
         amenities_config = self.rules.get('amenities', {})
         base_amenities = amenities_config.get('base_score', 3)
         amenities_adj = amenities_config.get('per_point_adjustment', 0.03)
+        # Symmetric adjustment: score 0 = -9%, score 3 = 0%, score 5 = +6%
         amenities_factor = 1 + (amenities_score - base_amenities) * amenities_adj
+        # Clamp to reasonable range
+        amenities_factor = max(0.85, min(amenities_factor, 1.15))
         
         old_price = current_price
         current_price *= amenities_factor
         trace.add_step('amenities', amenities_factor, old_price, current_price,
                       f"Amenities score: {amenities_score}/5")
         
-        # Demand adjustment
+        # Demand adjustment (symmetric around 1.0)
         demand_score = features.get('demand_score', 3)
         demand_config = self.rules.get('demand', {})
         base_demand = demand_config.get('base_score', 3)
         demand_adj = demand_config.get('per_point_adjustment', 0.04)
+        # Symmetric adjustment: score 0 = -12%, score 3 = 0%, score 5 = +8%
         demand_factor = 1 + (demand_score - base_demand) * demand_adj
+        # Clamp to reasonable range
+        demand_factor = max(0.80, min(demand_factor, 1.20))
         
         old_price = current_price
         current_price *= demand_factor
@@ -157,10 +169,10 @@ class RuleEngine:
         trace.add_step('appreciation', appreciation_factor, old_price, current_price,
                       f"Market appreciation: {appreciation*100:.1f}%")
         
-        # Crime penalty
+        # Crime penalty (ensure factor stays positive)
         crime_index = features.get('crime_index', 0.05)
         crime_weight = self.rules.get('crime', {}).get('weight', 0.6)
-        crime_factor = 1 - crime_index * crime_weight
+        crime_factor = max(0.6, 1 - crime_index * crime_weight)
         
         old_price = current_price
         current_price *= crime_factor
