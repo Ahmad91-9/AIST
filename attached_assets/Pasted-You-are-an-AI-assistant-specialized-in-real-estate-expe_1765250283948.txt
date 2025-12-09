@@ -1,0 +1,566 @@
+You are an AI assistant specialized in real estate expert systems, Python automation, and PySide6 GUI integration. I have a Python Expert System (codebase included) that currently:
+
+Uses a rule engine (EXsystem.py) with rules.json.
+
+Wraps the engine in app/expert_service.ExpertFacade.
+
+Provides a PySide6 GUI (app/main.py, app/views/*).
+
+Ships ML models (.pkl) predicting: price, rent, ROI, risk, future price (1yr & 3yr).
+
+First, analyze the repository structure and code (I have already provided the project). Then produce a detailed, actionable enhancement plan that updates rules, integrates ML outputs, and extends the PySide6 GUI so the system is production-ready for interactive use by agents and non-technical users.
+
+Your deliverable must include:
+
+Project summary (files to change, which models exist).
+
+Required input fields (type, range, categorical allowed values, whether required or optional, default).
+
+Professional, industry-based rule adjustments — a clear rule table or formulas (multipliers, additive/subtractive % adjustments) for:
+
+location (micro and macro), property type, bedrooms, bathrooms, condition, age, floor, parking, amenities, demand, purchase price, current price, rent, ROI, expenses, occupancy rate, market appreciation, risk factors, economic indices, future trends.
+
+Precise formulas for combining base-price → adjustments → final expert price (show the math and example).
+
+ML integration logic:
+
+when ML should override rule output
+
+how to combine (weighted average, Bayesian blend, confidence thresholds)
+
+how to use ML confidence/uncertainty to scale rule weight
+
+where to store/track model provenance & version
+
+GUI (PySide6) changes:
+
+form changes (validators, widgets, dynamic visibility)
+
+background execution (non-blocking model runs) and example code using QThread or QtConcurrent
+
+UI controls for override vs blended decision, show model confidences, show trace and reasoning
+
+charts & visualizations (matplotlib embed or pyqtgraph) for per-property ML + rule breakdown, risk gauge, ROI timeline (1yr,3yr)
+
+export buttons (CSV, PDF) and "Save evaluation" to disk
+
+accessibility & UX touches (help tooltips, default values, required-field marking, inline validation)
+
+Validation & consistency checks with exact checks and how the GUI should show validation errors.
+
+Industry-standard scoring weights for each factor (recommend percentages, normalization and how to calibrate to local markets).
+
+Integration checklist (files to change in your repo and step-by-step code snippets for the PySide6 app to wire ExpertFacade → background worker → report page).
+
+Small runnable code snippets for:
+
+building input JSON from GUI fields
+
+running the expert system + ML in background thread, updating UI safely via signals
+
+blending logic implementation example (weighted average with model confidence)
+
+Fallbacks & defaults: what to do if a model file is missing, or if a field is missing in input.
+
+Non-functional requirements:
+
+Keep all forms robust to malformed input.
+
+Use clear, traceable outputs so users can see the “why” (which rule changed price by X%).
+
+Keep ML models treated as advisory unless confidence is high or user explicitly accepts ML override.
+
+Make the GUI responsive and show progress while models run.
+
+Finally, output a concise CHANGELOG / TODO list of exact edits to these files: app/expert_service.py, EXsystem.py, app/views/form_page.py, app/views/report_page.py, app/main.py, and rules.json.
+
+Now — the detailed plan I generated for your project (ready-to-apply)
+
+Below I give you the concrete plan that follows the prompt above and is tailored to your repo (files I inspected). Use it to implement changes or feed to another assistant.
+
+1) Project summary (what I saw)
+
+Engine: EXsystem.py — contains rules engine and ML placeholders.
+
+UI entrypoint: app/main.py uses ExpertFacade() (in app/expert_service.py) and instantiates FormPage, ReportPage.
+
+Form: app/views/form_page.py maps lots of inputs to Features object; already has dynamic visibility helper _set_field_visible.
+
+Models present: price_model.pkl, rent_model.pkl, roi_model.pkl, risk_model.pkl, future_price_1yr_model.pkl, future_price_3yr_model.pkl.
+
+Rule file: rules.json exists in repo root.
+
+2) Required fields (recommended schema for GUI & ML consistency)
+
+Always required (for accurate outputs):
+
+location — string (free text); also accept location_level for normalization (neighborhood, district, city). Default: unknown → 'general'.
+
+area — numeric (sqm). Range: 5–50,000. Required.
+
+property_type — categorical. Allowed: house, flat, plot, commercial. Required.
+
+bedrooms — integer ≥0. Range 0–10. Required for houses/flats.
+
+bathrooms — integer ≥0. Range 0–10. Required for houses/flats.
+
+purchase_price — numeric (local currency). Required if ROI calculation needed. Range >0.
+
+current_price — numeric (local currency). If missing, expert system can estimate base price.
+
+annual_rent — numeric. Required if rent/ROI models used.
+
+occupancy_rate — float 0–1. Default 0.9 (if missing).
+
+Highly recommended (strongly improves accuracy):
+
+condition — categorical: new, like_new, used_good, needs_renovation. Default: used_good.
+
+age — integer years. Range 0–200. Default: 10.
+
+floor — integer (for flats). -5 to 200. Default: 1 if missing.
+
+parking — categorical: none, street, garage, covered. Default: none.
+
+amenities_score — numeric 0–5 (or derived from list of amenities). Default: 3.
+
+demand_score — numeric 0–5 (market demand). Default: 3.
+
+market_appreciation_score — annual expected growth (float). Default: local long-term average 0.03.
+
+crime_index — float 0–1. Default: 0.05.
+
+market_volatility — float 0–1. Default: 0.1.
+
+economic_index — float 0–1 (0 poor, 1 excellent). Default: 0.5.
+
+development_index — float 0–1 (infrastructure projects). Default 0.0
+
+expenses — annual numeric operating expense. Default: 0.1 * annual_rent.
+
+Optional extras (helpful):
+
+frontage, depth, soil_type, view_score, balcony, heating_score, elevator, near_transport_km, school_score, commerciality_score.
+
+3) Validation checks (how the GUI should enforce)
+
+Required fields: highlight in red and tooltip explaining requirement.
+
+Numeric ranges: immediate validator on QLineEdit (use QDoubleValidator / QIntValidator) with min/max from schema above.
+
+For occupancy_rate, ensure value between 0 and 1. For percentages accept 0–100 and convert.
+
+If current_price < purchase_price warn: "Current price less than purchase price — check data (possible loss)."
+
+If annual_rent very low relative to price (rent yield < 1%) show warning.
+
+If area outlier > 10x neighborhood median (if you have neighborhood median stored) prompt for confirmation.
+
+4) Rule system: professional multipliers & formulas
+
+Core idea: compute a base price per sqm using location baseline, then apply multiplicative modifiers (factors) and additive adjustments where appropriate.
+
+Base price
+
+base_price_per_sqm = location_base_rate * property_type_factor * age_factor * condition_factor
+
+Where:
+
+location_base_rate — neighborhood baseline (from dataset or user input).
+
+property_type_factor: house: 1.05, flat: 1.0, plot: 0.6, commercial: 1.25
+
+age_factor = 1 - age * 0.005 (0.5% per year depreciation up to floor)
+
+floor to 0.6 at very old ages.
+
+condition_factor: new=1.15, like_new=1.05, used_good=1.0, needs_renovation=0.8
+
+Then:
+
+expert_base_price = base_price_per_sqm * area
+
+Adjustments (multipliers; applied sequentially multiplicatively, with caps)
+
+floor_factor: ground-level desirable for shops: +5% for ground (if commercial), for flats higher floor may be +1%/floor up to +10% if view_score high.
+
+parking_factor: none: 0, street: -0.02, covered:+0.03, garage:+0.06
+
+amenities_adj = 1 + (amenities_score - 3) * 0.03 (each amenity point +3%)
+
+demand_adj = 1 + (demand_score - 3) * 0.04
+
+appreciation_adj = 1 + market_appreciation_score (multiply to reflect market)
+
+crime_penalty = 1 - crime_index * 0.6 (crime_index 0–1, scale weight 60%)
+
+volatility_penalty: if market_volatility > 0.2, apply downward adjustment: 1 - min(0.12, market_volatility * 0.4)
+
+Example full formula:
+
+adjusted_price = expert_base_price
+adjusted_price *= floor_factor
+adjusted_price *= parking_factor_value
+adjusted_price *= amenities_adj
+adjusted_price *= demand_adj
+adjusted_price *= appreciation_adj
+adjusted_price *= crime_penalty
+adjusted_price *= (1 + development_index * 0.06)  # future development uplift
+# Then clamp:
+adjusted_price = max(min(adjusted_price, expert_base_price * 1.7), expert_base_price * 0.4)
+
+Rent & ROI estimation (rule-based)
+
+estimated_rent = (adjusted_price * rent_yield_by_area), where rent_yield_by_area is 0.03–0.08 depending on location/demand.
+
+roi = (annual_rent * occupancy_rate - expenses) / purchase_price
+
+For forecasting: apply market_appreciation_score compounded: future_price_1yr = adjusted_price * (1 + market_appreciation_score); 3yr compounding similarly reduced by volatility: *(1 - market_volatility*0.5) factor for uncertainty.
+
+5) ML integration rules (how to blend/override)
+
+Use confidence-weighted blending as the default. Each model must return both prediction and confidence (0–1). If model or confidence not available, fall back to rules.
+
+Blending formula (per prediction e.g. price):
+
+w_ml = min(max(ml_confidence, 0.0), 0.95)   # cap at 95% to keep final explainability
+w_rules = 1 - w_ml
+final_price = w_ml * ml_price + w_rules * expert_price
+
+
+When ML should fully override:
+
+If ML confidence >= 0.95 and the rule-engine trace shows no major contradictions (no missing key fields).
+
+Or user toggles "Accept ML override" in GUI.
+
+When rules should dominate:
+
+If required fields missing for ML (e.g., location_base_rate absent) or model files missing.
+
+If ML and rules differ by > 30% and ML confidence < 0.6 → show both and require user confirmation for override.
+
+Model confidence derivation:
+
+If pkl model does not natively return a confidence, compute pseudo-confidence using an out-of-distribution (OOD) metric — e.g., distance from training feature means normalized to [0,1] (lower distance → higher confidence). (Implement in MLModelManager.)
+
+Provenance & versioning
+
+Save model_name, model_version (or file hash), prediction_time, confidence with each evaluation.
+
+Persist this in AppState and in saved CSV/JSON outputs.
+
+6) GUI changes (PySide6) — exact actionable items
+Form changes (app/views/form_page.py)
+
+Use appropriate validators:
+
+QDoubleValidator for floats with min/max from the schema.
+
+QIntValidator for integers.
+
+For occupancy and 0–1 floats, use QDoubleValidator(0.0, 1.0, 2).
+
+Replace raw QLineEdit for categorical fields with QComboBox for property_type, condition, parking.
+
+For location, add a searchable drop-down (QCompleter) seeded with known neighborhoods (if you have them).
+
+Add ? tooltips on each label with industry explanation.
+
+Mark required fields visually (red star).
+
+Add a collapsible "Advanced options" group containing development_index, economic_index, crime_index, market_volatility.
+
+Add a toggle checkbox: Prefer ML suggestion (default: off).
+
+Background execution (non-blocking)
+
+Create a Worker(QThread) or QRunnable that:
+
+Accepts feature dict.
+
+Calls the ExpertFacade.evaluate(features) (which returns expert result + ML results).
+
+Emits signals: progress(int), done(dict result), error(str).
+
+In FormPage, submit button connects to starting the worker and disables UI while running. Show a QProgressDialog or a spinner.
+
+Important: update UI only via Qt signals (do not update widgets directly from worker thread).
+
+Snippet (conceptual):
+
+# in form_page.py
+def on_submit(self):
+    features = self._gather_inputs()
+    self.worker = ExpertWorker(features)
+    self.worker.progress.connect(self._on_progress)
+    self.worker.finished.connect(self._on_result)
+    self.worker.start()
+
+Report / Output page (app/views/report_page.py)
+
+Present a 3-column layout:
+
+Left: Key results (Final price, ML price, expert price, risk score, ROI).
+
+Middle: waterfall breakdown (base → adjustments with percentage deltas).
+
+Right: charts (ML vs Expert, risk gauge, 1y/3y forecast line).
+
+Add a small table with the trace of rules applied (JSON-like with rule name, delta %, reason).
+
+Add toggles: accept ML price, re-run with updated weights (slider to set ML weight 0–100).
+
+Charts & visuals
+
+Use matplotlib canvas or pyqtgraph for faster rendering.
+
+Chart 1: Bar showing expert_price, ml_price, final_price.
+
+Chart 2: Line for forecast: current → 1yr → 3yr with shaded uncertainty band.
+
+Risk gauge: circular progress (use QDial styled or simple QLabel with colored background).
+
+Use consistent currency formatting and thousands separators.
+
+Save / Export
+
+Add buttons: Save evaluation (JSON), Export report (PDF), Copy summary.
+
+Implement Save evaluation to write a JSON with features, expert_trace, ml_predictions, weights, model_meta.
+
+UX details
+
+For long operations, allow cancel. If canceled, kill worker and reset UI.
+
+For missing models, show a non-blocking toast: "ML model price_model.pkl missing — using rules only".
+
+For conflicting outputs present both with color-coded differences and a short explanation sentence generated from the trace.
+
+7) Combining Expert rules with ML — operational logic
+
+Default run pipeline:
+
+Validate inputs.
+
+Compute expert result and trace synchronously or in a light thread (fast).
+
+Spawn ML worker(s) to compute ML predictions and confidences.
+
+When ML returns, compute blend using confidence-weighted formula above.
+
+Save full trace and present both before & after blend. Let user accept final or revert to expert.
+
+Keep a decision_log per evaluation:
+
+{"expert_price":..., "ml_price":..., "ml_confidence":..., "final_price":..., "weight_ml":..., "rules_applied":[...], "models":[{name, hash, version}]}
+
+8) Scoring weights (recommendation / starting point — normalize to sum ~1 for interpretability)
+
+Use these as starting default importance weights (tunable per market):
+
+location : 0.30
+
+area : 0.20
+
+property_type : 0.08
+
+condition : 0.06
+
+age : 0.04
+
+bedrooms_bathrooms : 0.07
+
+amenities : 0.04
+
+parking : 0.02
+
+demand_score : 0.06
+
+market_appreciation : 0.05
+
+risk_factors (crime, volatility, economic_index) : 0.08
+
+Use these weights to produce a composite quality_score ∈ [0,1] which can be reported next to final price (useful for risk UI).
+
+9) Validation examples and failure modes (exact checks)
+
+area <= 0 → reject.
+
+current_price and area inconsistent with price/sqm norms: if current_price/area deviates > 5x typical location_base_rate → show outlier warning but allow override.
+
+occupancy_rate outside 0–1 → clamp and warn.
+
+Null location → set location='general' and reduce location weight to 50% (more uncertainty).
+
+10) Files to change (exact edit plan + small code snippets)
+
+A. EXsystem.py
+
+Add MLModelManager methods to return (prediction, confidence).
+
+Implement blend_predictions(expert, ml, ml_confidence) using formula above.
+
+Add model provenance collection (file hash, timestamp).
+
+Add a to_trace() method returning {"rules":[...], "adjustments":[...], "intermediate":...}.
+
+B. app/expert_service.py
+
+Ensure ExpertFacade.evaluate(features, prefer_ml=False, ml_weight_override=None) exists and:
+
+Validates inputs and fills defaults.
+
+Calls RealEstateExpertSystem.evaluate(features) → returns expert_result & trace.
+
+Loads ML models async if requested (or synchronous callable), obtains predictions + confidences.
+
+Applies blending, returns structured dict {expert_result, ml_results, final, trace, model_meta}.
+
+C. app/views/form_page.py
+
+Replace raw text inputs with QComboBox + validators (code snippet below).
+
+Add "Advanced" collapsible area.
+
+Implement submit to start ExpertWorker (QThread).
+
+D. app/views/report_page.py
+
+Add methods to render charts and show an interactive blend slider.
+
+Add accept_ml_override() signal wired to facade to store user acceptance.
+
+E. app/main.py
+
+Wire ExpertFacade to new API and ensure ExpertWorker imports it via a safe interface.
+
+11) Concrete PySide6 code snippets you can copy
+A. Example: gather inputs → JSON (from form_page)
+def _gather_inputs(self):
+    # read widgets from self.inputs dict (keys mapped to field names)
+    f = {}
+    f['location'] = self.inputs['location'].text().strip() or 'general'
+    f['area'] = float(self.inputs['area'].text() or 0)
+    f['property_type'] = self.inputs['property_type'].currentText()
+    f['bedrooms'] = int(self.inputs['bedrooms'].text() or 0)
+    f['bathrooms'] = int(self.inputs['bathrooms'].text() or 0)
+    f['condition'] = self.inputs['condition'].currentText()
+    f['age'] = int(self.inputs['age'].text() or 0)
+    f['parking'] = self.inputs['parking'].currentText()
+    try:
+        f['occupancy_rate'] = float(self.inputs['occupancy_rate'].text())
+        if f['occupancy_rate'] > 1:
+            f['occupancy_rate'] /= 100.0
+    except:
+        f['occupancy_rate'] = 0.9
+    return f
+
+B. Worker skeleton using QThread (safe UI updates via signals)
+from PySide6.QtCore import QThread, Signal
+
+class ExpertWorker(QThread):
+    progress = Signal(int)
+    finished = Signal(dict)
+    error = Signal(str)
+
+    def __init__(self, facade, features):
+        super().__init__()
+        self.facade = facade
+        self.features = features
+
+    def run(self):
+        try:
+            self.progress.emit(10)
+            result = self.facade.evaluate(self.features)  # should handle ML loading internally
+            self.progress.emit(100)
+            self.finished.emit(result)
+        except Exception as e:
+            self.error.emit(str(e))
+
+C. Blending example (implement in EXsystem or ML manager)
+def blend_predictions(expert_value, ml_value, ml_confidence):
+    ml_confidence = max(0.0, min(ml_confidence, 0.95))
+    w_ml = ml_confidence
+    w_rules = 1 - w_ml
+    return w_ml * ml_value + w_rules * expert_value
+
+D. Example: show trace in GUI
+# in report_page.py
+def render_trace(self, trace):
+    # trace = list of {"rule": "...", "delta_pct": 0.05, "reason": "..."}
+    table = QtWidgets.QTableWidget(len(trace), 3)
+    table.setHorizontalHeaderLabels(["Rule", "Delta %", "Reason"])
+    for r_i, r in enumerate(trace):
+        table.setItem(r_i, 0, QtWidgets.QTableWidgetItem(r['rule']))
+        table.setItem(r_i, 1, QtWidgets.QTableWidgetItem(f"{r['delta_pct']*100:.2f}%"))
+        table.setItem(r_i, 2, QtWidgets.QTableWidgetItem(r['reason']))
+    self.layout().addWidget(table)
+
+12) Fallbacks & defaults
+
+If any model file is missing: log and show "ML unavailable — using rules only".
+
+If ML prediction fails: return expert result and reason in trace.
+
+When fields are missing, fill safe defaults (see earlier default list) and reduce ML confidence.
+
+13) Unit tests & QA suggestions
+
+Add unit tests for:
+
+blend_predictions() with edge confidences (0.0, 0.5, 0.95).
+
+EXsystem rules for a few canonical assets (e.g., 2-bed apartment in X neighborhood).
+
+GUI validators: area, occupancy_rate clipping.
+
+Add integration tests for ExpertFacade.evaluate() with and without ML.
+
+14) CHANGELOG / TODO (exact file edits to perform now)
+
+EXsystem.py:
+
+Implement MLModelManager.predict_with_confidence()
+
+Add blend_predictions() and evaluation_trace.
+
+app/expert_service.py:
+
+Add evaluate(features, prefer_ml=False, ml_weight_override=None) that returns a standard dict with expert, ml, trace.
+
+app/views/form_page.py:
+
+Replace free-text with combo boxes for categorical fields.
+
+Add validators and advanced options section.
+
+Hook submit to ExpertWorker.
+
+app/views/report_page.py:
+
+Add chart panel (matplotlib canvas) and trace table.
+
+Add ML override toggle and save/export buttons.
+
+app/main.py:
+
+Ensure signals are connected: worker finished → report page render.
+
+rules.json:
+
+Update with default location base rates and the new factor keys (parking, amenities multipliers, volatility caps).
+
+Add tests in tests/ for the main evaluation flow.
+
+Final notes & quick-start checklist for implementation
+
+Implement the ExpertWorker and use QThread signals to keep UI responsive.
+
+Add a ml_confidence field to all ML outputs. If model can't provide it, compute a distance-based pseudo-confidence (simple first-pass).
+
+Keep ML advisory by default — user must opt-in for ML full override.
+
+Present both expert and ML predictions side-by-side with a short natural-language explanation created from the rule trace (one-liners like: “Base price from location = X; amenities +6% → Y; ML predicted X2 with confidence 0.82.”).
+
+Export all evaluation metadata for auditability.
