@@ -1,6 +1,10 @@
 """Rule-based valuation engine for real estate expert system."""
+import os
 import json
 from typing import Dict, Any, List, Tuple
+
+# Get the base directory for resolving paths relative to this file
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class ValuationTrace:
@@ -34,7 +38,12 @@ class RuleEngine:
     """Rule-based property valuation engine."""
     
     def __init__(self, rules_path: str = 'rules.json'):
-        self.rules = self._load_rules(rules_path)
+        # Use BASE_DIR to resolve the rules path dynamically
+        if os.path.isabs(rules_path):
+            full_path = rules_path
+        else:
+            full_path = os.path.join(BASE_DIR, rules_path)
+        self.rules = self._load_rules(full_path)
     
     def _load_rules(self, path: str) -> Dict:
         try:

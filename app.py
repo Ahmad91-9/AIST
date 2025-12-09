@@ -57,7 +57,9 @@ st.markdown("""
 if 'evaluation_result' not in st.session_state:
     st.session_state.evaluation_result = None
 if 'ml_manager' not in st.session_state:
-    st.session_state.ml_manager = MLModelManager()
+    # Point MLModelManager to the correct folder containing the .pkl files
+    # Use lowercase 'models' for case-sensitive file systems (Linux/Streamlit Cloud)
+    st.session_state.ml_manager = MLModelManager(models_dir="models")
 if 'rule_engine' not in st.session_state:
     st.session_state.rule_engine = RuleEngine()
 
@@ -92,46 +94,81 @@ def render_sidebar_form():
         help="Location category affecting base price"
     )
     
-    # Property Features
-    st.sidebar.markdown("### Property Features")
+    # Determine which fields apply to this property type
+    is_plot = property_type == 'plot'
+    is_commercial = property_type == 'commercial'
+    is_house = property_type == 'house'
+    is_flat = property_type == 'flat'
     
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        bedrooms = st.number_input("Bedrooms", min_value=0, max_value=20, value=2)
-    with col2:
-        bathrooms = st.number_input("Bathrooms", min_value=0, max_value=15, value=1)
+    # Plots don't have buildings, so many fields are irrelevant
+    # Commercial properties don't have bedrooms
+    # Houses don't have a floor number (building floor)
     
-    condition = st.sidebar.selectbox(
-        "Condition",
-        options=['new', 'like_new', 'used_good', 'needs_renovation'],
-        index=2,
-        help="Current condition of the property"
-    )
+    # Default values for fields that may be hidden
+    bedrooms = 0
+    bathrooms = 0
+    condition = 'new'
+    age = 0
+    floor = 0
+    parking = 'none'
+    amenities_score = 0.0
+    occupancy_rate = 1.0  # Plots: assume 100% "usable"
     
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        age = st.number_input("Age (years)", min_value=0, max_value=200, value=10)
-    with col2:
-        floor = st.number_input("Floor", min_value=-5, max_value=200, value=1)
-    
-    parking = st.sidebar.selectbox(
-        "Parking",
-        options=['none', 'street', 'covered', 'garage'],
-        index=0,
-        help="Type of parking available"
-    )
+    # Property Features (only for non-plot types)
+    if not is_plot:
+        st.sidebar.markdown("### Property Features")
+        
+        # Bedrooms: only for flat and house (not commercial or plot)
+        if is_flat or is_house:
+            col1, col2 = st.sidebar.columns(2)
+            with col1:
+                bedrooms = st.number_input("Bedrooms", min_value=0, max_value=20, value=2)
+            with col2:
+                bathrooms = st.number_input("Bathrooms", min_value=0, max_value=15, value=1)
+        elif is_commercial:
+            # Commercial: no bedrooms, but may have bathrooms
+            bathrooms = st.sidebar.number_input("Bathrooms", min_value=0, max_value=15, value=1)
+        
+        condition = st.sidebar.selectbox(
+            "Condition",
+            options=['new', 'like_new', 'used_good', 'needs_renovation'],
+            index=2,
+            help="Current condition of the property"
+        )
+        
+        # Age applies to all built properties
+        # Floor only applies to flats and commercial (in multi-story buildings)
+        if is_flat or is_commercial:
+            col1, col2 = st.sidebar.columns(2)
+            with col1:
+                age = st.number_input("Age (years)", min_value=0, max_value=200, value=10)
+            with col2:
+                floor = st.number_input("Floor", min_value=-5, max_value=200, value=1)
+        else:
+            # House: has age but no floor number
+            age = st.sidebar.number_input("Age (years)", min_value=0, max_value=200, value=10)
+            floor = 0
+        
+        parking = st.sidebar.selectbox(
+            "Parking",
+            options=['none', 'street', 'covered', 'garage'],
+            index=0,
+            help="Type of parking available"
+        )
     
     # Market Factors
     st.sidebar.markdown("### Market Factors")
     
-    amenities_score = st.sidebar.slider(
-        "Amenities Score",
-        min_value=0.0,
-        max_value=5.0,
-        value=3.0,
-        step=0.5,
-        help="Quality of amenities (0=poor, 5=excellent)"
-    )
+    # Amenities score: not relevant for plots (no building amenities)
+    if not is_plot:
+        amenities_score = st.sidebar.slider(
+            "Amenities Score",
+            min_value=0.0,
+            max_value=5.0,
+            value=3.0,
+            step=0.5,
+            help="Quality of amenities (0=poor, 5=excellent)"
+        )
     
     demand_score = st.sidebar.slider(
         "Market Demand",
@@ -144,13 +181,15 @@ def render_sidebar_form():
     
     # Advanced Options (collapsible)
     with st.sidebar.expander("Advanced Options"):
-        occupancy_rate = st.slider(
-            "Occupancy Rate (%)",
-            min_value=0,
-            max_value=100,
-            value=90,
-            help="Expected rental occupancy percentage"
-        ) / 100.0
+        # Occupancy rate: not relevant for plots
+        if not is_plot:
+            occupancy_rate = st.slider(
+                "Occupancy Rate (%)",
+                min_value=0,
+                max_value=100,
+                value=90,
+                help="Expected rental occupancy percentage"
+            ) / 100.0
         
         market_appreciation = st.slider(
             "Market Appreciation (%)",
@@ -196,7 +235,7 @@ def render_sidebar_form():
             help="Planned infrastructure development (0=none, 1=major)"
         )
     
-    # Optional Financial Inputs
+    # Optional Financial Inputs (relevant for all types)
     with st.sidebar.expander("Financial Inputs (Optional)"):
         purchase_price = st.number_input(
             "Purchase Price ($)",
@@ -206,6 +245,7 @@ def render_sidebar_form():
             help="Original purchase price (for ROI calculation)"
         )
         
+        # Annual rent: not typical for plots, but user may still want to enter
         annual_rent = st.number_input(
             "Annual Rent ($)",
             min_value=0.0,
@@ -468,58 +508,73 @@ def render_detailed_results(result):
         st.write(f"**Bathrooms:** {features.get('bathrooms', 0)}")
 
 
+
+
 def render_export_section(result):
     """Render export options."""
     st.markdown("### Export Options")
     
+    features = result['features']
+    expert_result = result['expert_result']
+    ml_results = result['ml_results']
+    final_price = result['final_price']
+    blend_info = result['blend_info']
+    timestamp = result.get('timestamp', datetime.now().isoformat())[:19].replace(':', '').replace('-', '').replace('T', '_')
+    
     col1, col2, col3 = st.columns(3)
     
+    # CSV - generate immediately (lightweight)
     with col1:
-        # CSV Export
-        csv_content = export_to_csv(
-            result['features'],
-            result['expert_result'],
-            result['ml_results'],
-            {'final_price': result['final_price'], 'blend_info': result['blend_info']}
-        )
-        st.download_button(
-            label="Download CSV Report",
-            data=csv_content,
-            file_name=f"valuation_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
-    
-    with col2:
-        # PDF Export
         try:
-            pdf_content = export_to_pdf(
-                result['features'],
-                result['expert_result'],
-                result['ml_results'],
-                {'final_price': result['final_price'], 'blend_info': result['blend_info']}
+            csv_content = export_to_csv(
+                features, expert_result, ml_results,
+                {'final_price': final_price, 'blend_info': blend_info}
             )
             st.download_button(
-                label="Download PDF Report",
+                label="📄 Download CSV",
+                data=csv_content,
+                file_name=f"valuation_report_{timestamp}.csv",
+                mime="text/csv",
+                key="csv_download"
+            )
+        except Exception as e:
+            st.error(f"CSV error: {e}")
+    
+    # PDF - generate and provide download in same render cycle
+    with col2:
+        try:
+            pdf_content = export_to_pdf(
+                features, expert_result, ml_results,
+                {'final_price': final_price, 'blend_info': blend_info}
+            )
+            st.download_button(
+                label="📑 Download PDF",
                 data=pdf_content,
-                file_name=f"valuation_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                mime="application/pdf"
+                file_name=f"valuation_report_{timestamp}.pdf",
+                mime="application/pdf",
+                key="pdf_download"
             )
         except ImportError:
-            st.info("PDF export requires FPDF library")
+            st.info("PDF export requires fpdf2 library")
+        except Exception as e:
+            st.error(f"PDF error: {e}")
     
+    # Text - generate immediately (lightweight)
     with col3:
-        # Text Summary
-        summary = create_summary_text(
-            result['features'],
-            result['expert_result'],
-            {'final_price': result['final_price'], 'blend_info': result['blend_info']}
-        )
-        st.download_button(
-            label="Download Text Summary",
-            data=summary,
-            file_name=f"valuation_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-            mime="text/plain"
-        )
+        try:
+            txt_content = create_summary_text(
+                features, expert_result,
+                {'final_price': final_price, 'blend_info': blend_info}
+            )
+            st.download_button(
+                label="📝 Download Text",
+                data=txt_content,
+                file_name=f"valuation_summary_{timestamp}.txt",
+                mime="text/plain",
+                key="txt_download"
+            )
+        except Exception as e:
+            st.error(f"Text error: {e}")
 
 
 def main():
@@ -616,6 +671,24 @@ def main():
             model_status = st.session_state.ml_manager.get_model_status()
             available = sum(1 for m in model_status.values() if m.get('available', False))
             st.metric("Active Models", str(available), help="Real ML models loaded")
+
+        with st.expander("ML Model Status", expanded=False):
+            model_status = st.session_state.ml_manager.get_model_status()
+            for name, meta in model_status.items():
+                cols = st.columns([2, 2, 1, 3])
+                with cols[0]:
+                    st.caption(name)
+                with cols[1]:
+                    st.caption(meta.get('path', 'N/A'))
+                with cols[2]:
+                    st.caption("OK" if meta.get('available', False) else "Missing")
+                with cols[3]:
+                    err = meta.get('error') or meta.get('last_error')
+                    hash_ = meta.get('hash', '')
+                    text = f"hash={hash_}" if hash_ else ""
+                    if err:
+                        text = f"{text} | error={err}" if text else f"error={err}"
+                    st.caption(text or "")
 
 
 if __name__ == "__main__":

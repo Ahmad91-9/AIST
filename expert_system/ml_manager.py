@@ -12,13 +12,21 @@ except ImportError:
     JOBLIB_AVAILABLE = False
 
 
+# Get the base directory for resolving paths relative to this file
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 class MLModelManager:
     """Manages ML models with confidence scoring and blending."""
     
     MODEL_NAMES = ['price', 'rent', 'roi', 'risk', 'future_price_1yr', 'future_price_3yr']
     
     def __init__(self, models_dir: str = 'models'):
-        self.models_dir = models_dir
+        # Use BASE_DIR to resolve the models directory path
+        if os.path.isabs(models_dir):
+            self.models_dir = models_dir
+        else:
+            self.models_dir = os.path.join(BASE_DIR, models_dir)
         self.models: Dict[str, Any] = {}
         self.model_meta: Dict[str, Dict] = {}
         self.feature_stats: Dict[str, Dict] = {}

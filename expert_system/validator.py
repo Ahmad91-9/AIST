@@ -1,6 +1,10 @@
 """Input validation module for real estate expert system."""
+import os
 import json
 from typing import Dict, Any, List, Tuple
+
+# Get the base directory for resolving paths relative to this file
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class ValidationResult:
@@ -24,7 +28,8 @@ class ValidationResult:
 def load_rules() -> Dict:
     """Load rules configuration."""
     try:
-        with open('rules.json', 'r') as f:
+        rules_path = os.path.join(BASE_DIR, 'rules.json')
+        with open(rules_path, 'r') as f:
             return json.load(f)
     except:
         return {}

@@ -6,3 +6,6 @@ pandas
 plotly
 scikit-learn
 streamlit
+jinja2
+jsonschema
+python-dateutil

@@ -1,4 +1,7 @@
 """Visualization functions for real estate expert system using Plotly."""
+import matplotlib
+matplotlib.use("Agg")  # Use non-interactive backend for Streamlit Cloud compatibility
+
 import plotly.graph_objects as go
 import plotly.express as px
 from typing import Dict, Any, List

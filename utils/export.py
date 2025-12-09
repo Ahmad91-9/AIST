@@ -1,4 +1,4 @@
-"""Export utilities for CSV and PDF generation."""
+"""Export utilities for CSV, PDF, and text generation."""
 import csv
 import io
 from datetime import datetime
@@ -108,75 +108,142 @@ def export_to_pdf(features: Dict[str, Any], expert_result: Dict[str, Any],
         raise ImportError("FPDF library not available")
     
     pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     
+    # ========== HEADER WITH GRADIENT-STYLE BANNER ==========
+    # Dark blue header banner
+    pdf.set_fill_color(30, 60, 114)
+    pdf.rect(0, 0, 210, 45, 'F')
+    
     # Title
-    pdf.set_font('Helvetica', 'B', 20)
-    pdf.cell(0, 15, 'Real Estate Valuation Report', 0, 1, 'C')
-    
-    pdf.set_font('Helvetica', '', 10)
-    pdf.cell(0, 8, f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', 0, 1, 'C')
-    pdf.ln(10)
-    
-    # Property Details
-    pdf.set_font('Helvetica', 'B', 14)
-    pdf.set_fill_color(52, 152, 219)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(0, 10, 'Property Details', 0, 1, 'L', fill=True)
-    pdf.set_text_color(0, 0, 0)
+    pdf.set_font('Helvetica', 'B', 24)
+    pdf.set_y(12)
+    pdf.cell(0, 10, 'Real Estate Valuation Report', 0, 1, 'C')
     
+    # Subtitle
+    pdf.set_font('Helvetica', '', 11)
+    pdf.set_text_color(200, 220, 255)
+    pdf.cell(0, 8, 'Comprehensive Property Analysis & ML-Enhanced Predictions', 0, 1, 'C')
+    
+    # Date line
+    pdf.set_font('Helvetica', 'I', 9)
+    pdf.set_text_color(180, 200, 230)
+    pdf.cell(0, 6, f'Generated: {datetime.now().strftime("%B %d, %Y at %H:%M")}', 0, 1, 'C')
+    
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(12)
+    
+    # ========== EXECUTIVE SUMMARY BOX ==========
+    final_price = blended_result.get('final_price', 0)
+    risk_score = expert_result.get('risk_score', 0)
+    roi = expert_result.get('roi', 0)
+    risk_level = 'Low' if risk_score < 0.3 else ('Medium' if risk_score < 0.6 else 'High')
+    
+    # Light gray background box
+    pdf.set_fill_color(245, 247, 250)
+    pdf.rect(10, pdf.get_y(), 190, 28, 'F')
+    
+    # Draw border
+    pdf.set_draw_color(200, 200, 200)
+    pdf.rect(10, pdf.get_y(), 190, 28, 'D')
+    
+    y_start = pdf.get_y() + 4
+    
+    # Final Valuation (large, centered)
+    pdf.set_xy(10, y_start)
+    pdf.set_font('Helvetica', 'B', 11)
+    pdf.set_text_color(80, 80, 80)
+    pdf.cell(63, 6, 'Final Valuation', 0, 0, 'C')
+    pdf.cell(64, 6, 'Estimated ROI', 0, 0, 'C')
+    pdf.cell(63, 6, 'Risk Level', 0, 1, 'C')
+    
+    pdf.set_xy(10, y_start + 8)
+    pdf.set_font('Helvetica', 'B', 16)
+    pdf.set_text_color(30, 60, 114)
+    pdf.cell(63, 10, format_currency(final_price), 0, 0, 'C')
+    pdf.set_text_color(39, 174, 96)
+    pdf.cell(64, 10, f'{roi:.1f}%', 0, 0, 'C')
+    risk_color = (39, 174, 96) if risk_level == 'Low' else ((230, 150, 0) if risk_level == 'Medium' else (220, 53, 69))
+    pdf.set_text_color(*risk_color)
+    pdf.cell(63, 10, risk_level, 0, 1, 'C')
+    
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(18)
+    
+    # ========== PROPERTY DETAILS SECTION ==========
+    _pdf_section_header(pdf, 'Property Details', (52, 152, 219))
+    
+    # Two-column layout for property details
     pdf.set_font('Helvetica', '', 10)
     col_width = 95
-    for key, value in features.items():
-        pdf.cell(col_width, 7, key.replace('_', ' ').title(), 1)
-        pdf.cell(col_width, 7, str(value), 1)
-        pdf.ln()
-    pdf.ln(5)
+    row_height = 7
     
-    # Expert Results
-    pdf.set_font('Helvetica', 'B', 14)
-    pdf.set_fill_color(39, 174, 96)
-    pdf.set_text_color(255, 255, 255)
-    pdf.cell(0, 10, 'Expert System Results', 0, 1, 'L', fill=True)
-    pdf.set_text_color(0, 0, 0)
+    # Filter out internal/zero values for cleaner display
+    display_features = {k: v for k, v in features.items() 
+                       if v not in [0, 0.0, 'none', ''] or k in ['bedrooms', 'bathrooms', 'floor']}
     
-    pdf.set_font('Helvetica', '', 10)
+    items = list(display_features.items())
+    for i in range(0, len(items), 2):
+        # Left column
+        key1, val1 = items[i]
+        pdf.set_font('Helvetica', 'B', 9)
+        pdf.set_text_color(80, 80, 80)
+        pdf.cell(45, row_height, key1.replace('_', ' ').title() + ':', 0, 0, 'L')
+        pdf.set_font('Helvetica', '', 10)
+        pdf.set_text_color(0, 0, 0)
+        pdf.cell(50, row_height, str(val1), 0, 0, 'L')
+        
+        # Right column (if exists)
+        if i + 1 < len(items):
+            key2, val2 = items[i + 1]
+            pdf.set_font('Helvetica', 'B', 9)
+            pdf.set_text_color(80, 80, 80)
+            pdf.cell(45, row_height, key2.replace('_', ' ').title() + ':', 0, 0, 'L')
+            pdf.set_font('Helvetica', '', 10)
+            pdf.set_text_color(0, 0, 0)
+            pdf.cell(50, row_height, str(val2), 0, 1, 'L')
+        else:
+            pdf.ln()
+    
+    pdf.ln(6)
+    
+    # ========== EXPERT SYSTEM RESULTS ==========
+    _pdf_section_header(pdf, 'Expert System Analysis', (39, 174, 96))
+    
     expert_metrics = [
-        ('Expert Price', format_currency(expert_result.get('expert_price', 0))),
         ('Base Price', format_currency(expert_result.get('base_price', 0))),
+        ('Expert Price', format_currency(expert_result.get('expert_price', 0))),
         ('Price per SQM', format_currency(expert_result.get('price_per_sqm', 0))),
-        ('Estimated Rent (Annual)', format_currency(expert_result.get('estimated_rent', 0))),
-        ('ROI', format_percentage(expert_result.get('roi', 0))),
-        ('Risk Score', f"{expert_result.get('risk_score', 0):.2f}"),
+        ('Est. Annual Rent', format_currency(expert_result.get('estimated_rent', 0))),
         ('1-Year Forecast', format_currency(expert_result.get('future_price_1yr', 0))),
-        ('3-Year Forecast', format_currency(expert_result.get('future_price_3yr', 0)))
+        ('3-Year Forecast', format_currency(expert_result.get('future_price_3yr', 0))),
     ]
     
-    for metric, value in expert_metrics:
-        pdf.cell(col_width, 7, metric, 1)
-        pdf.cell(col_width, 7, value, 1)
-        pdf.ln()
-    pdf.ln(5)
+    _pdf_metrics_table(pdf, expert_metrics, 2)
+    pdf.ln(6)
     
-    # ML Results
-    pdf.set_font('Helvetica', 'B', 14)
-    pdf.set_fill_color(231, 76, 60)
-    pdf.set_text_color(255, 255, 255)
-    pdf.cell(0, 10, 'ML Model Predictions', 0, 1, 'L', fill=True)
+    # ========== ML MODEL PREDICTIONS ==========
+    _pdf_section_header(pdf, 'ML Model Predictions', (142, 68, 173))
+    
+    # Table header
+    pdf.set_fill_color(250, 250, 252)
+    pdf.set_font('Helvetica', 'B', 9)
+    pdf.set_text_color(60, 60, 60)
+    pdf.cell(55, 8, 'Model', 1, 0, 'C', fill=True)
+    pdf.cell(50, 8, 'Prediction', 1, 0, 'C', fill=True)
+    pdf.cell(40, 8, 'Confidence', 1, 0, 'C', fill=True)
+    pdf.cell(40, 8, 'Status', 1, 1, 'C', fill=True)
+    
+    pdf.set_font('Helvetica', '', 9)
     pdf.set_text_color(0, 0, 0)
     
-    pdf.set_font('Helvetica', 'B', 10)
-    pdf.cell(60, 7, 'Model', 1)
-    pdf.cell(60, 7, 'Prediction', 1)
-    pdf.cell(35, 7, 'Confidence', 1)
-    pdf.cell(35, 7, 'Status', 1)
-    pdf.ln()
-    
-    pdf.set_font('Helvetica', '', 10)
+    row_alt = False
     for model_name, data in ml_results.items():
         prediction = data.get('prediction')
         if prediction is not None:
-            if 'price' in model_name:
+            if 'price' in model_name or model_name == 'rent':
                 pred_str = format_currency(prediction)
             elif model_name in ['roi', 'risk']:
                 pred_str = f"{prediction:.2f}"
@@ -185,81 +252,144 @@ def export_to_pdf(features: Dict[str, Any], expert_result: Dict[str, Any],
         else:
             pred_str = 'N/A'
         
-        pdf.cell(60, 7, model_name.replace('_', ' ').title(), 1)
-        pdf.cell(60, 7, pred_str, 1)
-        pdf.cell(35, 7, format_percentage(data.get('confidence', 0) * 100), 1)
-        pdf.cell(35, 7, 'Yes' if data.get('available', False) else 'No', 1)
-        pdf.ln()
-    pdf.ln(5)
+        confidence = data.get('confidence', 0) * 100
+        available = data.get('available', False)
+        
+        # Alternating row colors
+        if row_alt:
+            pdf.set_fill_color(248, 249, 252)
+        else:
+            pdf.set_fill_color(255, 255, 255)
+        
+        pdf.cell(55, 7, model_name.replace('_', ' ').title(), 1, 0, 'L', fill=True)
+        pdf.cell(50, 7, pred_str, 1, 0, 'R', fill=True)
+        
+        # Confidence with color coding
+        if confidence >= 80:
+            pdf.set_text_color(39, 174, 96)
+        elif confidence >= 50:
+            pdf.set_text_color(230, 150, 0)
+        else:
+            pdf.set_text_color(220, 53, 69)
+        pdf.cell(40, 7, f'{confidence:.0f}%', 1, 0, 'C', fill=True)
+        
+        # Status
+        pdf.set_text_color(39, 174, 96) if available else pdf.set_text_color(150, 150, 150)
+        pdf.cell(40, 7, 'Active' if available else 'Inactive', 1, 1, 'C', fill=True)
+        pdf.set_text_color(0, 0, 0)
+        
+        row_alt = not row_alt
     
-    # Blended Results
-    pdf.set_font('Helvetica', 'B', 14)
-    pdf.set_fill_color(155, 89, 182)
-    pdf.set_text_color(255, 255, 255)
-    pdf.cell(0, 10, 'Final Blended Results', 0, 1, 'L', fill=True)
-    pdf.set_text_color(0, 0, 0)
+    pdf.ln(6)
     
-    pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(col_width, 10, 'Final Valuation:', 0)
-    pdf.cell(col_width, 10, format_currency(blended_result.get('final_price', 0)), 0)
-    pdf.ln()
-    
+    # ========== BLENDING METHODOLOGY ==========
     blend_info = blended_result.get('blend_info', {})
-    pdf.set_font('Helvetica', '', 10)
-    pdf.cell(col_width, 7, 'Blending Method:', 0)
-    pdf.cell(col_width, 7, blend_info.get('method', 'N/A'), 0)
-    pdf.ln()
-    pdf.cell(col_width, 7, 'Expert Weight:', 0)
-    pdf.cell(col_width, 7, format_percentage(blend_info.get('expert_weight', 1) * 100), 0)
-    pdf.ln()
-    pdf.cell(col_width, 7, 'ML Weight:', 0)
-    pdf.cell(col_width, 7, format_percentage(blend_info.get('ml_weight', 0) * 100), 0)
-    pdf.ln(10)
+    _pdf_section_header(pdf, 'Valuation Methodology', (52, 73, 94))
     
-    # Adjustment Trace
+    pdf.set_font('Helvetica', '', 10)
+    method = blend_info.get('method', 'N/A').replace('_', ' ').title()
+    expert_weight = blend_info.get('expert_weight', 1) * 100
+    ml_weight = blend_info.get('ml_weight', 0) * 100
+    
+    pdf.cell(0, 7, f'Blending Method: {method}', 0, 1)
+    pdf.cell(0, 7, f'Expert System Weight: {expert_weight:.0f}%  |  ML Model Weight: {ml_weight:.0f}%', 0, 1)
+    
+    reason = blend_info.get('reason', '')
+    if reason:
+        pdf.set_font('Helvetica', 'I', 9)
+        pdf.set_text_color(100, 100, 100)
+        pdf.multi_cell(0, 6, f'Note: {reason}')
+        pdf.set_text_color(0, 0, 0)
+    
+    pdf.ln(4)
+    
+    # ========== ADJUSTMENT TRACE (if available) ==========
     trace = expert_result.get('trace', {})
     steps = trace.get('steps', [])
     if steps:
-        pdf.add_page()
-        pdf.set_font('Helvetica', 'B', 14)
-        pdf.set_fill_color(52, 73, 94)
-        pdf.set_text_color(255, 255, 255)
-        pdf.cell(0, 10, 'Adjustment Trace', 0, 1, 'L', fill=True)
+        # Check if we need a new page
+        if pdf.get_y() > 220:
+            pdf.add_page()
+        
+        _pdf_section_header(pdf, 'Price Adjustment Trace', (44, 62, 80))
+        
+        pdf.set_fill_color(250, 250, 252)
+        pdf.set_font('Helvetica', 'B', 8)
+        pdf.set_text_color(60, 60, 60)
+        pdf.cell(35, 7, 'Rule', 1, 0, 'C', fill=True)
+        pdf.cell(22, 7, 'Factor', 1, 0, 'C', fill=True)
+        pdf.cell(22, 7, 'Delta', 1, 0, 'C', fill=True)
+        pdf.cell(106, 7, 'Reason', 1, 1, 'C', fill=True)
+        
+        pdf.set_font('Helvetica', '', 8)
         pdf.set_text_color(0, 0, 0)
         
-        pdf.set_font('Helvetica', 'B', 9)
-        pdf.cell(40, 7, 'Rule', 1)
-        pdf.cell(25, 7, 'Factor', 1)
-        pdf.cell(25, 7, 'Delta %', 1)
-        pdf.cell(100, 7, 'Reason', 1)
-        pdf.ln()
-        
-        pdf.set_font('Helvetica', '', 9)
-        for step in steps:
-            pdf.cell(40, 7, step.get('rule', '')[:20], 1)
-            pdf.cell(25, 7, f"{step.get('factor', 1):.3f}", 1)
-            pdf.cell(25, 7, f"{step.get('delta_pct', 0):.1f}%", 1)
-            pdf.cell(100, 7, step.get('reason', '')[:50], 1)
-            pdf.ln()
+        for i, step in enumerate(steps):
+            if i % 2 == 0:
+                pdf.set_fill_color(255, 255, 255)
+            else:
+                pdf.set_fill_color(248, 249, 252)
+            
+            rule = step.get('rule', '')[:18]
+            factor = step.get('factor', 1)
+            delta = step.get('delta_pct', 0)
+            reason = step.get('reason', '')[:55]
+            
+            pdf.cell(35, 6, rule, 1, 0, 'L', fill=True)
+            pdf.cell(22, 6, f'{factor:.3f}', 1, 0, 'C', fill=True)
+            
+            # Color code delta
+            if delta > 0:
+                pdf.set_text_color(39, 174, 96)
+            elif delta < 0:
+                pdf.set_text_color(220, 53, 69)
+            pdf.cell(22, 6, f'{delta:+.1f}%', 1, 0, 'C', fill=True)
+            pdf.set_text_color(0, 0, 0)
+            
+            pdf.cell(106, 6, reason, 1, 1, 'L', fill=True)
     
-    # Model Provenance
-    pdf.ln(10)
-    pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(0, 8, 'Model Provenance', 0, 1)
-    pdf.set_font('Helvetica', '', 9)
-    
-    for model_name, data in ml_results.items():
-        meta = data.get('model_meta', {})
-        if meta:
-            pdf.cell(0, 6, f"{model_name}: hash={meta.get('hash', 'N/A')}, loaded={meta.get('loaded_at', 'N/A')[:19]}", 0, 1)
-    
-    # Footer
+    # ========== FOOTER ==========
     pdf.ln(10)
     pdf.set_font('Helvetica', 'I', 8)
+    pdf.set_text_color(120, 120, 120)
     pdf.cell(0, 5, 'This report is generated for informational purposes only.', 0, 1, 'C')
-    pdf.cell(0, 5, 'Actual property values may vary based on market conditions.', 0, 1, 'C')
+    pdf.cell(0, 5, 'Actual property values may vary based on market conditions and other factors.', 0, 1, 'C')
+    pdf.ln(3)
+    pdf.set_font('Helvetica', 'B', 8)
+    pdf.set_text_color(30, 60, 114)
+    pdf.cell(0, 5, 'Real Estate Expert System - Powered by ML & Rule-Based Analysis', 0, 1, 'C')
     
-    return pdf.output()
+    # Return as bytes
+    pdf_bytes = pdf.output()
+    return bytes(pdf_bytes)
+
+
+def _pdf_section_header(pdf: 'FPDF', title: str, color: tuple):
+    """Helper to draw a styled section header."""
+    pdf.set_fill_color(*color)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font('Helvetica', 'B', 11)
+    pdf.cell(0, 9, f'  {title}', 0, 1, 'L', fill=True)
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(3)
+
+
+def _pdf_metrics_table(pdf: 'FPDF', metrics: List[tuple], cols: int = 2):
+    """Helper to draw metrics in a multi-column layout."""
+    pdf.set_font('Helvetica', '', 10)
+    col_width = 190 // cols
+    
+    for i in range(0, len(metrics), cols):
+        for j in range(cols):
+            if i + j < len(metrics):
+                label, value = metrics[i + j]
+                pdf.set_font('Helvetica', '', 9)
+                pdf.set_text_color(80, 80, 80)
+                pdf.cell(col_width // 2, 7, label + ':', 0, 0, 'L')
+                pdf.set_font('Helvetica', 'B', 10)
+                pdf.set_text_color(0, 0, 0)
+                pdf.cell(col_width // 2, 7, value, 0, 0, 'L')
+        pdf.ln()
 
 
 def create_summary_text(features: Dict[str, Any], expert_result: Dict[str, Any],
